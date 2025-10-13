@@ -190,14 +190,34 @@ https://xhslink.com/分享码" required></textarea>
 
             // 尝试读取剪贴板内容
             try {
-                const text = await navigator.clipboard.readText();
-                if (text.trim()) {
-                    urlInput.value = text.trim();
+                // 检查浏览器是否支持Clipboard API
+                if (navigator.clipboard && window.isSecureContext) {
+                    const text = await navigator.clipboard.readText();
+                    if (text.trim()) {
+                        urlInput.value = text.trim();
+                        clipboardInfo.style.display = 'block';
+                    } else {
+                        // 剪贴板内容为空时的提示
+                        clipboardInfo.textContent = '✓ 请手动粘贴URL';
+                        clipboardInfo.style.backgroundColor = '#fff9c4';
+                        clipboardInfo.style.color = '#f57f17';
+                        clipboardInfo.style.display = 'block';
+                    }
+                } else {
+                    console.log('当前环境不支持剪贴板API');
+                    // 显示提示，告知用户需要手动粘贴
+                    clipboardInfo.textContent = '✓ 请手动粘贴URL';
+                    clipboardInfo.style.backgroundColor = '#fff9c4';
+                    clipboardInfo.style.color = '#f57f17';
                     clipboardInfo.style.display = 'block';
                 }
             } catch (err) {
-                console.log('无法自动读取剪贴板内容:', err);
-                // 不显示错误，这不是关键功能
+                console.log('读取剪贴板失败:', err);
+                // 错误发生时，显示友好提示
+                clipboardInfo.textContent = '✓ 请手动粘贴URL';
+                clipboardInfo.style.backgroundColor = '#fff9c4';
+                clipboardInfo.style.color = '#f57f17';
+                clipboardInfo.style.display = 'block';
             }
 
             // 表单提交事件
