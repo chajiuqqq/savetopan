@@ -1,0 +1,19 @@
+[Unit]
+Description=Resource Saver Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/res_saver
+ExecStart=/root/res_saver/res_saver
+Restart=on-failure
+RestartSec=5s
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=res-saver
+
+[Install]
+WantedBy=multi-user.target

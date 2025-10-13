@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>保存资源到网盘</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            background-color: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            resize: vertical;
+            min-height: 100px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin-top: 10px;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            display: none;
+        }
+
+        .status.success {
+            background-color: #dff0d8;
+            color: #3c763d;
+            border: 1px solid #d6e9c6;
+        }
+
+        .status.error {
+            background-color: #f2dede;
+            color: #a94442;
+            border: 1px solid #ebccd1;
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .loading {
+            display: none;
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        .loading:after {
+            content: '.';
+            animation: dots 1.5s steps(5, end) infinite;
+        }
+
+        @keyframes dots {
+
+            0%,
+            20% {
+                content: '.';
+            }
+
+            40% {
+                content: '..';
+            }
+
+            60% {
+                content: '...';
+            }
+
+            80%,
+            100% {
+                content: '';
+            }
+        }
+
+        .clipboard-info {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #e8f5e9;
+            border-radius: 5px;
+            font-size: 14px;
+            color: #2e7d32;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>保存资源到网盘</h1>
+
+        <div class="input-group">
+            <label for="urlInput">输入URL：</label>
+            <textarea id="urlInput" placeholder="支持以下格式
+https://www.xiaohongshu.com/explore/作品ID?xsec_token=XXX
+https://www.xiaohongshu.com/discovery/item/作品ID?xsec_token=XXX
+https://www.xiaohongshu.com/user/profile/作者ID/作品ID?xsec_token=XXX
+https://xhslink.com/分享码" required></textarea>
+        </div>
+
+        <div id="clipboardInfo" class="clipboard-info" style="display: none;">
+            ✓ 已自动从剪贴板读取内容
+        </div>
+
+        <button id="submitBtn">提交</button>
+
+        <div id="loading" class="loading">正在处理资源</div>
+
+        <div id="status" class="status"></div>
+
+        <div id="result" class="result" style="display: none;">
+            <strong>处理结果：</strong>
+            <pre id="resultContent"></pre>
+        </div>
+    </div>
+
+    <script>
+        // 页面加载后尝试读取剪贴板内容
+        document.addEventListener('DOMContentLoaded', async () => {
+            const urlInput = document.getElementById('urlInput');
+            const clipboardInfo = document.getElementById('clipboardInfo');
+            const submitBtn = document.getElementById('submitBtn');
+            const loading = document.getElementById('loading');
+            const status = document.getElementById('status');
+            const result = document.getElementById('result');
+            const resultContent = document.getElementById('resultContent');
+
+            // 尝试读取剪贴板内容
+            try {
+                const text = await navigator.clipboard.readText();
+                if (text.trim()) {
+                    urlInput.value = text.trim();
+                    clipboardInfo.style.display = 'block';
+                }
+            } catch (err) {
+                console.log('无法自动读取剪贴板内容:', err);
+                // 不显示错误，这不是关键功能
+            }
+
+            // 表单提交事件
+            submitBtn.addEventListener('click', async () => {
+                const url = urlInput.value.trim();
+
+                if (!url) {
+                    showStatus('请输入URL', 'error');
+                    return;
+                }
+
+                // 准备处理
+                submitBtn.disabled = true;
+                loading.style.display = 'block';
+                status.style.display = 'none';
+                result.style.display = 'none';
+
+                try {
+                    // 构造请求数据
+                    const requestData = {
+                        message: {
+                            text: url
+                        }
+                    };
+
+                    // 发送请求到后端API
+                    const response = await fetch('/api/process', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(requestData)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`API请求失败: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+
+                    // 显示结果
+                    showStatus('处理完成', 'success');
+                    resultContent.textContent = JSON.stringify(data, null, 2);
+                    result.style.display = 'block';
+
+                } catch (error) {
+                    console.error('处理请求出错:', error);
+                    showStatus(`处理失败: ${error.message}`, 'error');
+                } finally {
+                    // 重置状态
+                    submitBtn.disabled = false;
+                    loading.style.display = 'none';
+                }
+            });
+
+            // 显示状态信息
+            function showStatus(message, type) {
+                status.textContent = message;
+                status.className = 'status ' + type;
+                status.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+
+</html>
