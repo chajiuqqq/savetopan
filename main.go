@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"regexp"
 
@@ -152,7 +153,15 @@ func main() {
 		}
 
 		// 资源文件
-		resources := generateResourcesInfo(config.XHSDownloader.DownloadDir, downloadResponse)
+		resources, err := generateResourcesInfo(config.XHSDownloader.DownloadDir, downloadResponse)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, Response{
+				Message:  fmt.Sprintf("抓取资源失败: %v", err),
+				Download: false,
+				Upload:   false,
+			})
+			return
+		}
 
 		// 上传到AList
 		uploadResults, uploadSuccess := uploadToAlist(resources)
@@ -275,7 +284,7 @@ func downloadFromXHS(targetURL string) (*XHSDownloadResponse, error) {
 }
 
 // 资源文件
-func generateResourcesInfo(dir string, response *XHSDownloadResponse) []ResourceInfo {
+func generateResourcesInfo(dir string, response *XHSDownloadResponse) ([]ResourceInfo, error) {
 	var resources []ResourceInfo
 
 	// 获取作者昵称和作品标题
@@ -286,12 +295,23 @@ func generateResourcesInfo(dir string, response *XHSDownloadResponse) []Resource
 	if response.Data.ItemType == "图文" {
 		ext = ".jpeg"
 	} else if response.Data.ItemType == "视频" {
-		ext = ".mov"
-	} else {
-		ext = ".jpeg" // 默认扩展名
+		// 视频的格式未定，ext遍历后获取
+		files, err := os.ReadDir(config.XHSDownloader.DownloadDir)
+		if err != nil {
+			return nil, fmt.Errorf("读取下载目录失败: %v", err)
+		}
+		// 筛选视频文件
+		for _, file := range files {
+			if strings.Contains(file.Name(), response.Data.ItemID) {
+				ext = filepath.Ext(file.Name())
+				break
+			}
+		}
+		if ext == "" {
+			return nil, fmt.Errorf("未找到匹配的视频文件")
+		}
 	}
 
-	// 清理标题中的特殊字符
 	// 处理所有下载地址
 	for i, url := range response.Data.DownloadLinks {
 		if url == "" {
@@ -300,7 +320,10 @@ func generateResourcesInfo(dir string, response *XHSDownloadResponse) []Resource
 		// 生成文件名
 		fileName := fmt.Sprintf("%s_%s_%d%s", authorName, itemID, i+1, ext)
 		filePath := filepath.Join(dir, fileName)
-
+		if response.Data.ItemType == "视频" {
+			fileName = fmt.Sprintf("%s_%s%s", authorName, itemID, ext)
+			filePath = filepath.Join(dir, fileName)
+		}
 		// 添加到资源列表
 		resources = append(resources, ResourceInfo{
 			FileName: fileName,
@@ -308,7 +331,7 @@ func generateResourcesInfo(dir string, response *XHSDownloadResponse) []Resource
 		})
 	}
 
-	return resources
+	return resources, nil
 }
 
 // 上传到AList
