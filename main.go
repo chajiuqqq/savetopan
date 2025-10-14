@@ -7,7 +7,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"regexp"
 
@@ -74,11 +77,8 @@ type UploadResult struct {
 
 // 最终返回结构
 type Response struct {
-	Message     string         `json:"message"`
-	Download    bool           `json:"download"`
-	Upload      bool           `json:"upload"`
-	Resources   []ResourceInfo `json:"resources"`
-	UploadTasks []UploadResult `json:"upload_tasks"`
+	Message string `json:"message"`
+	Success bool   `json:"success"`
 }
 
 // ALIST上传响应结构
@@ -120,7 +120,40 @@ func main() {
 
 		c.Next()
 	})
+	// 任务状态响应结构
+	type TaskStatusResponse struct {
+		Timestamp int64  `json:"timestamp"`
+		TaskName  string `json:"name"`
+		Status    string `json:"status"` // 成功、处理中、失败
+	}
+	var taskMap = sync.Map{}
 
+	// 定义GET接口，返回taskmap里的数据
+	r.GET("/api/task_status", func(c *gin.Context) {
+		var responses []TaskStatusResponse
+		// 提取taskMap所有key并排序
+		keys := make([]int64, 0)
+		taskMap.Range(func(key, value interface{}) bool {
+			keys = append(keys, key.(int64))
+			return true
+		})
+		// 对key进行排序
+		sort.Slice(keys, func(i, j int) bool {
+			return keys[i] > keys[j]
+		})
+		// 按排序后的key顺序添加任务到响应列表
+		for _, k := range keys {
+			task, ok := taskMap.Load(k)
+			if ok {
+				responses = append(responses, TaskStatusResponse{
+					Timestamp: task.(*TaskStatusResponse).Timestamp,
+					TaskName:  task.(*TaskStatusResponse).TaskName,
+					Status:    task.(*TaskStatusResponse).Status,
+				})
+			}
+		}
+		c.JSON(http.StatusOK, responses)
+	})
 	// 定义POST接口
 	r.POST("/api/process", func(c *gin.Context) {
 		var req RequestBody
@@ -140,42 +173,59 @@ func main() {
 			})
 			return
 		}
+		// 生成任务ID
+		tm := time.Now().Unix()
+		taskMap.Store(tm, &TaskStatusResponse{
+			Timestamp: tm,
+			TaskName:  targetURL,
+			Status:    "处理中",
+		})
+		go func(taskID int64, taskUrl string) {
+			// 调用XHS下载器
+			downloadResponse, err := downloadFromXHS(taskUrl)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, Response{
+					Message: fmt.Sprintf("下载失败: %v", err),
+					Success: false,
+				})
+				return
+			}
 
-		// 调用XHS下载器
-		downloadResponse, err := downloadFromXHS(targetURL)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, Response{
-				Message:  fmt.Sprintf("下载失败: %v", err),
-				Download: false,
-				Upload:   false,
-			})
-			return
-		}
+			// 资源文件
+			resources, err := generateResourcesInfo(config.XHSDownloader.DownloadDir, downloadResponse)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, Response{
+					Message: fmt.Sprintf("抓取资源失败: %v", err),
+					Success: false,
+				})
+				return
+			}
 
-		// 资源文件
-		resources, err := generateResourcesInfo(config.XHSDownloader.DownloadDir, downloadResponse)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, Response{
-				Message:  fmt.Sprintf("抓取资源失败: %v", err),
-				Download: false,
-				Upload:   false,
-			})
-			return
-		}
+			// 上传到AList
+			_, uploadSuccess := uploadToAlist(resources)
+			taskName := fmt.Sprintf("%s-%s", downloadResponse.Data.Author, downloadResponse.Data.Title)
+			if uploadSuccess {
+				taskMap.Store(tm, &TaskStatusResponse{
+					Timestamp: tm,
+					TaskName:  taskName,
+					Status:    "成功",
+				})
+			} else {
+				taskMap.Store(tm, &TaskStatusResponse{
+					Timestamp: tm,
+					TaskName:  taskName,
+					Status:    "失败",
+				})
+			}
 
-		// 上传到AList
-		uploadResults, uploadSuccess := uploadToAlist(resources)
-
-		// 清除资源
-		clearDownloadDir(resources)
+			// 清除资源
+			// clearDownloadDir(resources)
+		}(tm, targetURL)
 
 		// 返回结果
 		c.JSON(http.StatusOK, Response{
-			Message:     "处理完成",
-			Download:    true,
-			Upload:      uploadSuccess,
-			Resources:   resources,
-			UploadTasks: uploadResults,
+			Message: "已提交",
+			Success: true,
 		})
 	})
 
@@ -257,7 +307,7 @@ func downloadFromXHS(targetURL string) (*XHSDownloadResponse, error) {
 	reqBody := map[string]interface{}{
 		"url":      targetURL,
 		"download": true,
-		"skip":     false,
+		"skip":     true,
 	}
 
 	// 发送POST请求

@@ -92,19 +92,6 @@
             border: 1px solid #ebccd1;
         }
 
-        .result {
-            margin-top: 20px;
-            padding: 15px;
-            background-color: #f9f9f9;
-            border-radius: 5px;
-            border: 1px solid #ddd;
-            max-height: 400px;
-            overflow-y: auto;
-            font-family: monospace;
-            white-space: pre-wrap;
-            word-break: break-all;
-        }
-
         .loading {
             display: none;
             margin-top: 15px;
@@ -145,6 +132,82 @@
             font-size: 14px;
             color: #2e7d32;
         }
+
+        /* 任务列表样式 */
+        .task-list {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+
+        .task-list h2 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 18px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .task-refresh-btn {
+            background-color: #2196F3;
+            padding: 5px 12px;
+            font-size: 12px;
+        }
+
+        .task-items {
+            margin-bottom: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .task-item {
+            padding: 12px;
+            margin-bottom: 10px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #4CAF50;
+        }
+
+        .task-item h3 {
+            margin: 0 0 5px 0;
+            font-size: 16px;
+            color: #333;
+        }
+
+        .task-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .task-status {
+            font-weight: bold;
+        }
+
+        .task-status.success {
+            color: #4CAF50;
+        }
+
+        .task-status.processing {
+            color: #FF9800;
+        }
+
+        .task-status.failed {
+            color: #F44336;
+        }
+
+        .no-tasks {
+            text-align: center;
+            color: #999;
+            padding: 20px;
+            font-style: italic;
+        }
     </style>
 </head>
 
@@ -171,9 +234,15 @@ https://xhslink.com/分享码" required></textarea>
 
         <div id="status" class="status"></div>
 
-        <div id="result" class="result" style="display: none;">
-            <strong>处理结果：</strong>
-            <pre id="resultContent"></pre>
+        <!-- 任务列表区域 -->
+        <div class="task-list">
+            <h2>
+                任务历史
+                <button id="refreshTasksBtn" class="task-refresh-btn">刷新</button>
+            </h2>
+            <div id="taskItems" class="task-items">
+                <div class="no-tasks">暂无任务历史记录</div>
+            </div>
         </div>
     </div>
 
@@ -185,8 +254,8 @@ https://xhslink.com/分享码" required></textarea>
             const submitBtn = document.getElementById('submitBtn');
             const loading = document.getElementById('loading');
             const status = document.getElementById('status');
-            const result = document.getElementById('result');
-            const resultContent = document.getElementById('resultContent');
+            const taskItems = document.getElementById('taskItems');
+            const refreshTasksBtn = document.getElementById('refreshTasksBtn');
 
             // 尝试读取剪贴板内容
             try {
@@ -220,6 +289,12 @@ https://xhslink.com/分享码" required></textarea>
                 clipboardInfo.style.display = 'block';
             }
 
+            // 获取任务列表
+            fetchTasks();
+
+            // 刷新任务按钮事件
+            refreshTasksBtn.addEventListener('click', fetchTasks);
+
             // 表单提交事件
             submitBtn.addEventListener('click', async () => {
                 const url = urlInput.value.trim();
@@ -233,7 +308,6 @@ https://xhslink.com/分享码" required></textarea>
                 submitBtn.disabled = true;
                 loading.style.display = 'block';
                 status.style.display = 'none';
-                result.style.display = 'none';
 
                 try {
                     // 构造请求数据
@@ -259,9 +333,10 @@ https://xhslink.com/分享码" required></textarea>
                     const data = await response.json();
 
                     // 显示结果
-                    showStatus('处理完成', 'success');
-                    resultContent.textContent = JSON.stringify(data, null, 2);
-                    result.style.display = 'block';
+                    showStatus('已提交', 'success');
+
+                    // 重新获取任务列表
+                    fetchTasks();
 
                 } catch (error) {
                     console.error('处理请求出错:', error);
@@ -278,6 +353,79 @@ https://xhslink.com/分享码" required></textarea>
                 status.textContent = message;
                 status.className = 'status ' + type;
                 status.style.display = 'block';
+            }
+
+            // 获取任务列表
+            async function fetchTasks() {
+                try {
+                    const response = await fetch('/api/task_status', {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`获取任务列表失败: ${response.status}`);
+                    }
+
+                    const tasks = await response.json();
+                    displayTasks(tasks);
+                } catch (error) {
+                    console.error('获取任务列表出错:', error);
+                    taskItems.innerHTML = '<div class="no-tasks">获取任务列表失败</div>';
+                }
+            }
+
+            // 显示任务列表
+            function displayTasks(tasks) {
+                if (!Array.isArray(tasks) || tasks.length === 0) {
+                    taskItems.innerHTML = '<div class="no-tasks">暂无任务历史记录</div>';
+                    return;
+                }
+
+                // 按时间戳降序排序（最新的任务在前）
+                tasks.sort((a, b) => b.timestamp - a.timestamp);
+
+                let html = '';
+                tasks.forEach(task => {
+                    // 格式化时间
+                    const date = new Date(task.timestamp * 1000);
+                    const formattedTime = date.toLocaleString('zh-CN', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                    });
+
+                    // 确定状态样式类
+                    let statusClass = '';
+                    switch (task.status) {
+                        case '成功':
+                            statusClass = 'success';
+                            break;
+                        case '处理中':
+                            statusClass = 'processing';
+                            break;
+                        case '失败':
+                            statusClass = 'failed';
+                            break;
+                    }
+
+                    html += `
+                        <div class="task-item">
+                            <h3>${task.name || '未命名任务'}</h3>
+                            <div class="task-meta">
+                                <span>${formattedTime}</span>
+                                <span class="task-status ${statusClass}">${task.status || '未知'}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                taskItems.innerHTML = html;
             }
         });
     </script>
