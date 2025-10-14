@@ -1,26 +1,35 @@
 # 小红书收集器
+> 90%代码由 [TRAE](https://www.trae.ai/) 协同开发完成
 
 ## 项目概述
 
+小红书上有很多好东西，但是保存到手机占用空间，保存到网盘又要手动下载后上传，于是做了这个自动化下载和上传网盘的工具。
+
 这是一个基于Golang和Gin框架开发的资源处理工具，主要用于从特定来源（如小红书）下载资源并上传到网盘（如AList）进行保存。工具提供了Web界面和API接口两种使用方式，方便用户操作。
 
-[Alist](https://alistgo.com/zh/) 支持对接多种网盘，比如夸克网盘、百度网盘等，用户可以挂载目录到不同的网盘进行资源上传。
+[Alist](https://alistgo.com/zh/) 支持对接多种网盘，比如夸克网盘、百度网盘等。
 
 ## 功能特性
 
-- **提取URL**：自动从输入内容中提取URL
-- **资源下载**：调用下载服务获取媒体资源，目前仅支持小红书
-- **网盘上传**：将资源上传到 Alist 支持的网盘
+- **提取URL**：自动从输入内容中提取URL（支持小红书地址栏、分享链接）
+- **资源下载**：自动抓取小红书图片、视频资源
+- **网盘上传**：自动上传资源到 Alist 支持的网盘
 - **Web界面**：提供用户友好的Web界面，自动读取剪贴板内容
 - **配置管理**：支持通过配置文件自定义服务参数
 - **系统服务**：提供systemd服务配置，便于后台稳定运行
 
 ![alt text](PixPin_2025-10-14_10-48-03.jpg)
 
-## 更新
+## 日志
 
 - **2025-10-13**：初始版本发布
 - **2025-10-14**：页面增加显示任务列表和进度
+
+其他
+
+- [BUG] 下载器下过的资源不会重新下载
+- [BUG] Alist任务有时候会上传失败
+- [TODO] 定时清理下载目录
 
 ## 技术栈
 
@@ -136,13 +145,8 @@ curl -X POST http://服务器IP:9092/api/process \
 
 ## URL格式支持
 
-系统支持以下URL格式：
+支持黏贴以下URL格式：
 - `https://www.xiaohongshu.com/explore/作品ID?xsec_token=XXX`
 - `https://www.xiaohongshu.com/discovery/item/作品ID?xsec_token=XXX`
 - `https://www.xiaohongshu.com/user/profile/作者ID/作品ID?xsec_token=XXX`
 - `https://xhslink.com/分享码`
-
-## TODO
-[BUG] 下载器下过的资源不会重新下载
-[BUG] Alist任务有时候会上传失败
-[TODO] 定时清理下载目录
