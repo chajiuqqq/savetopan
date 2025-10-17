@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -93,6 +94,7 @@ type AlistUploadResponse struct {
 }
 
 var config Config
+var taskMap = sync.Map{}
 
 func main() {
 	// 加载配置
@@ -126,8 +128,34 @@ func main() {
 		TaskName  string `json:"name"`
 		Status    string `json:"status"` // 成功、处理中、失败
 	}
-	var taskMap = sync.Map{}
+	// 启动定时任务，每天0点清空taskMap
+	go func() {
+		for {
+			now := time.Now()
+			nextMidnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+			duration := nextMidnight.Sub(now)
+			time.Sleep(duration)
+			taskMap.Range(func(key, value interface{}) bool {
+				taskMap.Delete(key)
+				return true
+			})
+		}
+	}()
+	// 启动定时任务，每小时打印内存占用情况
+	go func() {
+		for {
+			// 获取当前内存统计信息
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+			// 打印内存占用信息
+			fmt.Printf("内存占用统计 - 分配内存: %.2f MB, 堆分配内存: %.2f MB, 堆释放内存: %.2f MB\n",
+				float64(m.Alloc)/1024/1024, float64(m.HeapAlloc)/1024/1024, float64(m.HeapReleased)/1024/1024)
+			// 等待一小时
+			time.Sleep(time.Hour)
+		}
+	}()
 
+	// 需要在import部分添加 "runtime" 包，由于当前选择范围限制，这里仅添加定时任务代码
 	// 定义GET接口，返回taskmap里的数据
 	r.GET("/api/task_status", func(c *gin.Context) {
 		var responses []TaskStatusResponse
